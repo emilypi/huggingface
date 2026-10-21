@@ -325,14 +325,3 @@ Successful JSON responses and `downloadFile` are buffered without a size cap.
 Use bounded page sizes and `withDownload` for large content. Public requests
 are subject to Hugging Face rate limits; no automatic background requests occur.
 
-## Package conventions
-
-Packaging follows the local `emilypi/base64` and `emilypi/base64-lens`
-repositories: a Cabal Simple library, BSD-3-Clause license, bounded dependencies,
-explicit public modules, Haddock headers, Tasty tests, changelog, contributor
-guide, source-distribution CI, and a Nix expression. `scripts/validate.sh`
-checks the build, tests, documentation, and source archive. All integration
-tests run against local servers and require no token or paid inference.
-
-The GitHub URLs in package metadata identify the intended upstream repository;
-creating this local checkout does not publish it to GitHub or Hackage.
