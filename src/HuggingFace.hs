@@ -10,14 +10,17 @@
 -- Create a reusable 'Client' with 'newClient' and 'defaultClientConfig'.
 -- Parse repository names with 'parseRepoId', then call 'modelInfo',
 -- 'listModels', or 'chatCompletion'. See the README for complete examples.
+-- Compose operations in 'HuggingFaceM' and run them with 'runHuggingFaceM'.
 module HuggingFace
     ( module HuggingFace.Client
     , module HuggingFace.Hub
     , module HuggingFace.Inference
+    , module HuggingFace.Monad
     , module HuggingFace.Types
     ) where
 
 import HuggingFace.Client
 import HuggingFace.Hub
 import HuggingFace.Inference
+import HuggingFace.Monad
 import HuggingFace.Types

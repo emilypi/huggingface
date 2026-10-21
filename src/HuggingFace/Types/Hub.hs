@@ -1,3 +1,4 @@
+{-# LANGUAGE DerivingVia #-}
 {-# LANGUAGE OverloadedStrings #-}
 
 -- |
@@ -26,73 +27,73 @@ import HuggingFace.Types.Parameters (PositiveInt)
 import HuggingFace.Types.Repository (AccountName, RepoId, CommitSha, RepoPath)
 
 -- | Open Hub metadata tag, including namespaced tags.
-newtype HubTag = HubTag Text deriving (Eq, Ord, Show)
+newtype HubTag = HubTag
+    { hubTagText :: Text
+    -- ^ Render a HubTag.
+    }
+    deriving stock (Show)
+    deriving (Eq, Ord, ToJSON) via Text
 
 -- | Parse a HubTag from external text.
 parseHubTag :: Text -> Either HuggingFaceError HubTag
 parseHubTag = fmap HubTag . parseLabel "HubTag"
 
--- | Render a HubTag.
-hubTagText :: HubTag -> Text
-hubTagText (HubTag t) = t
-
-instance ToJSON HubTag where toJSON = toJSON . hubTagText
 instance FromJSON HubTag where parseJSON = parseTextJSON "HubTag" parseHubTag
 
 -- | Open model task identifier.
-newtype PipelineTag = PipelineTag Text deriving (Eq, Ord, Show)
+newtype PipelineTag = PipelineTag
+    { pipelineTagText :: Text
+    -- ^ Render a PipelineTag.
+    }
+    deriving stock (Show)
+    deriving (Eq, Ord, ToJSON) via Text
 
 -- | Parse a PipelineTag from external text.
 parsePipelineTag :: Text -> Either HuggingFaceError PipelineTag
 parsePipelineTag = fmap PipelineTag . parseLabel "PipelineTag"
 
--- | Render a PipelineTag.
-pipelineTagText :: PipelineTag -> Text
-pipelineTagText (PipelineTag t) = t
-
-instance ToJSON PipelineTag where toJSON = toJSON . pipelineTagText
 instance FromJSON PipelineTag where parseJSON = parseTextJSON "PipelineTag" parsePipelineTag
 
 -- | Open model library identifier.
-newtype LibraryName = LibraryName Text deriving (Eq, Ord, Show)
+newtype LibraryName = LibraryName
+    { libraryNameText :: Text
+    -- ^ Render a LibraryName.
+    }
+    deriving stock (Show)
+    deriving (Eq, Ord, ToJSON) via Text
 
 -- | Parse a LibraryName from external text.
 parseLibraryName :: Text -> Either HuggingFaceError LibraryName
 parseLibraryName = fmap LibraryName . parseLabel "LibraryName"
 
--- | Render a LibraryName.
-libraryNameText :: LibraryName -> Text
-libraryNameText (LibraryName t) = t
-
-instance ToJSON LibraryName where toJSON = toJSON . libraryNameText
 instance FromJSON LibraryName where parseJSON = parseTextJSON "LibraryName" parseLibraryName
 
 -- | Open Space SDK identifier.
-newtype SpaceSdk = SpaceSdk Text deriving (Eq, Ord, Show)
+newtype SpaceSdk = SpaceSdk
+    { spaceSdkText :: Text
+    -- ^ Render a SpaceSdk.
+    }
+    deriving stock (Show)
+    deriving (Eq, Ord, ToJSON) via Text
 
 -- | Parse a SpaceSdk from external text.
 parseSpaceSdk :: Text -> Either HuggingFaceError SpaceSdk
 parseSpaceSdk = fmap SpaceSdk . parseLabel "SpaceSdk"
 
--- | Render a SpaceSdk.
-spaceSdkText :: SpaceSdk -> Text
-spaceSdkText (SpaceSdk t) = t
-
-instance ToJSON SpaceSdk where toJSON = toJSON . spaceSdkText
 instance FromJSON SpaceSdk where parseJSON = parseTextJSON "SpaceSdk" parseSpaceSdk
 
 -- | Open Hub sort field.
-newtype SortKey = SortKey Text deriving (Eq, Ord, Show)
+newtype SortKey = SortKey
+    { sortKeyText :: Text
+    -- ^ Render a SortKey.
+    }
+    deriving stock (Show)
+    deriving (Eq, Ord, ToJSON) via Text
 
 -- | Parse a SortKey from external text.
 parseSortKey :: Text -> Either HuggingFaceError SortKey
 parseSortKey = fmap SortKey . parseLabel "SortKey"
 
--- | Render a SortKey.
-sortKeyText :: SortKey -> Text
-sortKeyText (SortKey t) = t
-
-instance ToJSON SortKey where toJSON = toJSON . sortKeyText
 instance FromJSON SortKey where parseJSON = parseTextJSON "SortKey" parseSortKey
 
 -- | Shared Hub metadata. Optional fields may be absent from list responses.
@@ -109,7 +110,7 @@ data RepoInfo = RepoInfo
     , repoSdk :: Maybe SpaceSdk -- ^ Space SDK, when available.
     , repoSiblings :: [RepoFile] -- ^ Files included in the metadata response.
     , repoRaw :: Object -- ^ Complete JSON object, including provider extensions.
-    } deriving (Eq, Show)
+    } deriving stock (Eq, Show)
 
 instance FromJSON RepoInfo where
     parseJSON = withObject "RepoInfo" $ \o -> RepoInfo
@@ -122,7 +123,7 @@ instance FromJSON RepoInfo where
 data RepoFile = RepoFile
     { fileName :: RepoPath -- ^ Relative path within the repository.
     , fileSize :: Maybe Integer -- ^ Byte count, when supplied.
-    } deriving (Eq, Show)
+    } deriving stock (Eq, Show)
 
 instance FromJSON RepoFile where
     parseJSON = withObject "RepoFile" $ \o -> RepoFile <$> o .: "rfilename" <*> o .:? "size"
@@ -132,7 +133,7 @@ data UserInfo = UserInfo
     { userName :: AccountName -- ^ Account name.
     , userFullName :: Maybe Text -- ^ Display name.
     , userRaw :: Object -- ^ Full identity response; may contain private account data.
-    } deriving (Eq, Show)
+    } deriving stock (Eq, Show)
 
 instance FromJSON UserInfo where
     parseJSON = withObject "UserInfo" $ \o -> UserInfo <$> o .: "name" <*> o .:? "fullname" <*> pure o
@@ -146,7 +147,7 @@ data ListOptions = ListOptions
     , listSort :: Maybe SortKey -- ^ Server sort key, such as @downloads@ or @lastModified@.
     , listLimit :: Maybe PositiveInt -- ^ Positive page size.
     , listFull :: Bool -- ^ Ask for expanded metadata.
-    } deriving (Eq, Show)
+    } deriving stock (Eq, Show)
 
 -- | Unfiltered first page, with the server's default size and ordering.
 defaultListOptions :: ListOptions

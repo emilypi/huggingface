@@ -27,6 +27,7 @@ import Network.HTTP.Client hiding (TooManyRedirects)
 import Network.HTTP.Types
 import Network.URI (URI (..), URIAuth (..), parseURIReference, relativeTo)
 import HuggingFace.Error (HuggingFaceError (..))
+import HuggingFace.Monad
 import HuggingFace.Types.Auth (tokenBytes)
 import HuggingFace.Client (Client, clientManager, clientHub, clientToken, clientTimeout)
 import HuggingFace.Utils (encodeSegments, readAtMost, sameOrigin, decodeJSON)
@@ -51,63 +52,64 @@ requestFor client base segments query = base
 
 -- | Execute a prepared request and decode JSON. GET redirects stay on-origin;
 -- response and decoding failures use the library's redacted error types.
-getJSON :: FromJSON a => Client -> Request -> IO (Either HuggingFaceError a)
-getJSON client request = fmap (>>= \(_, _, body) -> decodeJSON body) (getBytes client request)
+getJSON :: FromJSON a => Client -> Request -> HuggingFaceM a
+getJSON client request = do
+    (_, _, body) <- getBytes client request
+    liftEither (decodeJSON body)
 
 -- | Submit JSON with a prepared request and decode its response. POST redirects
 -- are not followed; use a manager with transport retries disabled.
-postJSON :: (ToJSON a, FromJSON b) => Client -> Request -> a -> IO (Either HuggingFaceError b)
+postJSON :: (ToJSON a, FromJSON b) => Client -> Request -> a -> HuggingFaceM b
 postJSON client request payload = getJSON client request
     { method = methodPost
     , requestBody = RequestBodyLBS (encode payload)
     , requestHeaders = (hContentType, "application/json") : requestHeaders request
     }
 
-getBytes :: Client -> Request -> IO (Either HuggingFaceError (Request, ResponseHeaders, BL.ByteString))
+getBytes :: Client -> Request -> HuggingFaceM (Request, ResponseHeaders, BL.ByteString)
 getBytes client request = withBody False client request $ \response -> do
-    chunks <- brConsume (responseBody response)
+    chunks <- liftIO (brConsume (responseBody response))
     pure (getOriginalRequest response, responseHeaders response, BL.fromChunks chunks)
 
 -- | Decode a JSON array and its Link continuation from a prepared request.
-getPage :: FromJSON a => Client -> Request -> IO (Either HuggingFaceError (Page a))
+getPage :: FromJSON a => Client -> Request -> HuggingFaceM (Page a)
 getPage client request = do
-    result <- getBytes client request
-    pure $ do
-        (finalRequest, headers, body) <- result
-        items <- decodeJSON body
-        pure (Page items (nextPageFromHeaders finalRequest headers))
+    (finalRequest, headers, body) <- getBytes client request
+    items <- liftEither (decodeJSON body)
+    pure (Page items (nextPageFromHeaders finalRequest headers))
 
 -- | Fetch a continuation only if it resolves to the configured Hub origin.
-continuePage :: FromJSON a => Client -> NextPage -> IO (Either HuggingFaceError (Page a))
+continuePage :: FromJSON a => Client -> NextPage -> HuggingFaceM (Page a)
 continuePage client next = case redirectTarget False (clientHub client) (nextPageURL next) of
     Right target | sameOrigin target (clientHub client) ->
         let request = requestFor client target [] []
         in getPage client request {path = path target, queryString = queryString target}
-    _ -> pure (Left InvalidPagination)
+    _ -> throwError InvalidPagination
 
 -- | Consume a successful response while its body reader is in scope. Setting
 -- the first argument to 'True' allows external GET redirects and strips
 -- credentials when crossing origins. HTTPS downgrades are always rejected.
 -- The response and its socket are closed before following another redirect.
 -- Only GET redirects are followed; replaying a billable POST is never implicit.
-withBody :: Bool -> Client -> Request -> (Response BodyReader -> IO a) -> IO (Either HuggingFaceError a)
+-- Typed callback errors close the response before propagating to the caller.
+withBody :: Bool -> Client -> Request -> (Response BodyReader -> HuggingFaceM a) -> HuggingFaceM a
 withBody allowExternal client initial consume = go (5 :: Int) initial
   where
     go remaining request = do
-        outcome <- catchHTTP $ withResponse request (clientManager client) $ \response -> do
-            let code = statusCode (responseStatus response)
-            if code >= 200 && code < 300
-                then Right . Right <$> consume response
-                else if method request == methodGet && code `elem` [301, 302, 303, 307, 308]
-                    then pure $ if remaining <= 0 then Left TooManyRedirects else
-                        case lookup hLocation (responseHeaders response) of
-                            Nothing -> Left UnsafeRedirect
-                            Just location -> Left <$> redirectTarget allowExternal request location
-                    else Left <$> responseError response
+        outcome <- liftHuggingFaceM $ catchHTTP $
+            withResponse request (clientManager client) $ \response -> runHuggingFaceM $ do
+                let code = statusCode (responseStatus response)
+                if code >= 200 && code < 300
+                    then Right <$> consume response
+                    else if method request == methodGet && code `elem` [301, 302, 303, 307, 308]
+                        then if remaining <= 0 then throwError TooManyRedirects else
+                            case lookup hLocation (responseHeaders response) of
+                                Nothing -> throwError UnsafeRedirect
+                                Just location -> Left <$> liftEither (redirectTarget allowExternal request location)
+                        else liftIO (responseError response) >>= throwError
         case outcome of
-            Left err -> pure (Left err)
-            Right (Right value) -> pure (Right value)
-            Right (Left target) -> go (remaining - 1) target
+            Right value -> pure value
+            Left target -> go (remaining - 1) target
 
 catchHTTP :: IO (Either HuggingFaceError a) -> IO (Either HuggingFaceError a)
 catchHTTP action = action `catch` handler

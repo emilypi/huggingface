@@ -10,3 +10,19 @@
 *.dyn_o
 *.tar.gz
 .DS_Store
+
+# Logs and local agent artifacts
+logs/
+*.log
+.Codex/
+.codex/
+.agents/
+.claude/
+.aider*
+AGENTS.md
+AGENTS.override.md
+CLAUDE.md
+GEMINI.md
+FOCUS.md
+agent-output/
+agent-outputs/

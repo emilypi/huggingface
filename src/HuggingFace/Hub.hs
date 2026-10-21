@@ -25,25 +25,25 @@ import Network.HTTP.Client (BodyReader, brConsume, requestHeaders, responseBody)
 import Network.HTTP.Types (Query, hAccept)
 import HuggingFace.Internal.HTTP
 import HuggingFace.Client (Client, clientHub)
-import HuggingFace.Error (HuggingFaceError)
+import HuggingFace.Monad (HuggingFaceM, liftIO)
 import HuggingFace.Types.Hub
 import HuggingFace.Types.Parameters (positiveIntValue)
 import HuggingFace.Types.Pagination (Page, NextPage)
 import HuggingFace.Types.Repository
 
 -- | Fetch one page of models.
-listModels :: Client -> ListOptions -> IO (Either HuggingFaceError (Page RepoInfo))
+listModels :: Client -> ListOptions -> HuggingFaceM (Page RepoInfo)
 listModels = listRepositories Model
 
 -- | Fetch one page of datasets.
-listDatasets :: Client -> ListOptions -> IO (Either HuggingFaceError (Page RepoInfo))
+listDatasets :: Client -> ListOptions -> HuggingFaceM (Page RepoInfo)
 listDatasets = listRepositories Dataset
 
 -- | Fetch one page of Spaces.
-listSpaces :: Client -> ListOptions -> IO (Either HuggingFaceError (Page RepoInfo))
+listSpaces :: Client -> ListOptions -> HuggingFaceM (Page RepoInfo)
 listSpaces = listRepositories Space
 
-listRepositories :: RepoType -> Client -> ListOptions -> IO (Either HuggingFaceError (Page RepoInfo))
+listRepositories :: RepoType -> Client -> ListOptions -> HuggingFaceM (Page RepoInfo)
 listRepositories kind client options = getPage client (requestFor client (clientHub client) ["api", repoPlural kind] (listQuery options))
 
 listQuery :: ListOptions -> Query
@@ -59,12 +59,12 @@ listQuery options = catMaybes
 
 -- | Fetch a continuation obtained from a page. Only the configured Hub origin
 -- is accepted, even when the continuation came from another client's page.
-nextPage :: FromJSON a => Client -> NextPage -> IO (Either HuggingFaceError (Page a))
+nextPage :: FromJSON a => Client -> NextPage -> HuggingFaceM (Page a)
 nextPage = continuePage
 
 -- | Repository metadata at the default branch or an explicit revision.
 -- Requests file sizes through @blobs=true@.
-repositoryInfo :: Client -> RepoType -> RepoId -> Maybe Revision -> IO (Either HuggingFaceError RepoInfo)
+repositoryInfo :: Client -> RepoType -> RepoId -> Maybe Revision -> HuggingFaceM RepoInfo
 repositoryInfo client kind repository revision = getJSON client $
     requestFor client (clientHub client)
         (["api", repoPlural kind] ++ T.splitOn "/" (repoIdText repository)
@@ -72,32 +72,32 @@ repositoryInfo client kind repository revision = getJSON client $
         [("blobs", Just "true")]
 
 -- | Model metadata, optionally pinned to a revision.
-modelInfo :: Client -> RepoId -> Maybe Revision -> IO (Either HuggingFaceError RepoInfo)
+modelInfo :: Client -> RepoId -> Maybe Revision -> HuggingFaceM RepoInfo
 modelInfo client = repositoryInfo client Model
 
 -- | Dataset metadata, optionally pinned to a revision.
-datasetInfo :: Client -> RepoId -> Maybe Revision -> IO (Either HuggingFaceError RepoInfo)
+datasetInfo :: Client -> RepoId -> Maybe Revision -> HuggingFaceM RepoInfo
 datasetInfo client = repositoryInfo client Dataset
 
 -- | Space metadata, optionally pinned to a revision.
-spaceInfo :: Client -> RepoId -> Maybe Revision -> IO (Either HuggingFaceError RepoInfo)
+spaceInfo :: Client -> RepoId -> Maybe Revision -> HuggingFaceM RepoInfo
 spaceInfo client = repositoryInfo client Space
 
 -- | Identify the token's owner. Requires an access token.
-whoAmI :: Client -> IO (Either HuggingFaceError UserInfo)
+whoAmI :: Client -> HuggingFaceM UserInfo
 whoAmI client = getJSON client (requestFor client (clientHub client) ["api", "whoami-v2"] [])
 
 -- | Buffer a file in memory. Use 'withDownload' for large model weights.
-downloadFile :: Client -> RepoType -> RepoId -> Revision -> RepoPath -> IO (Either HuggingFaceError BL.ByteString)
+downloadFile :: Client -> RepoType -> RepoId -> Revision -> RepoPath -> HuggingFaceM BL.ByteString
 downloadFile client kind repository revision file =
-    withDownload client kind repository revision file (fmap BL.fromChunks . brConsume)
+    withDownload client kind repository revision file (liftIO . fmap BL.fromChunks . brConsume)
 
 -- | Stream a repository file to a callback. The body reader is valid only while
--- the callback runs. Connections close on success or exception. HTTP failures
--- become 'Left'; other callback exceptions propagate. No filesystem paths are
--- chosen or written by the library. Credentials are removed on CDN redirects;
+-- the callback runs. Connections close on success, typed error, or exception.
+-- HTTP failures use the monad's error channel; other IO exceptions propagate.
+-- No filesystem paths are chosen or written by the library. Credentials are removed on CDN redirects;
 -- an HTTPS request can never redirect to HTTP. At most five redirects are followed.
-withDownload :: Client -> RepoType -> RepoId -> Revision -> RepoPath -> (BodyReader -> IO a) -> IO (Either HuggingFaceError a)
+withDownload :: Client -> RepoType -> RepoId -> Revision -> RepoPath -> (BodyReader -> HuggingFaceM a) -> HuggingFaceM a
 withDownload client kind repository revision file consume =
     withBody True client request (consume . responseBody)
   where

@@ -57,6 +57,7 @@ Import `HuggingFace` for the domain API, or use focused imports:
 | --- | --- |
 | `HuggingFace.Client` | Client construction, parsed endpoints, and configuration |
 | `HuggingFace.Error` | Error constructors and redacted diagnostics |
+| `HuggingFace.Monad` | Opaque client computations, runner, and error/IO utilities |
 | `HuggingFace.Hub` | Hub operations and downloads |
 | `HuggingFace.Inference` | Hosted inference operations |
 | `HuggingFace.Types.Auth` | Opaque tokens and their parser |
@@ -78,8 +79,10 @@ Every library module is exposed by Cabal, including `HuggingFace.Internal.HTTP`.
 `Internal` identifies transport implementation details, not package visibility;
 import it and `Utils` explicitly when extending the client.
 
-Module visibility does not expose raw constructors. `Token`, `NextPage`, and
-`Client` offer ordinary read-only accessors rather than record selectors.
+Module visibility does not expose raw constructors. Direct newtype accessors
+are declared as record fields. `RepoId`, `InferenceModel`, and `Client` use
+records for their independently meaningful components. Exported selectors
+support normal Haskell record updates.
 `tokenBytes` explicitly reveals the credential for custom transports;
 `nextPageURL` may contain private query parameters. `Token` and `NextPage` retain
 redacted `Show` instances. `nextPageFromHeaders` parses a continuation, and the
@@ -109,22 +112,20 @@ prepareChat target prompt = do
 import HuggingFace
 
 main :: IO ()
-main = case mkPositiveInt 10 of
-    Left err -> print err
-    Right limit -> do
-        client <- newClient defaultClientConfig
-        models <- listModels client defaultListOptions
+main = do
+    result <- runHuggingFaceM $ do
+        limit <- liftEither (mkPositiveInt 10)
+        client <- liftIO (newClient defaultClientConfig)
+        page <- listModels client defaultListOptions
             { listSearch = Just "bert", listLimit = Just limit }
-        case models of
-            Left err -> print err
-            Right page -> mapM_ (print . repoIdText . repoId) (pageItems page)
-
+        liftIO $ mapM_ (print . repoIdText . repoId) (pageItems page)
+    either print pure result
 ```
 
 `listModels`, `listDatasets`, and `listSpaces` return a single `Page RepoInfo`.
 `pageNext` contains an opaque continuation when another page is available.
 Call `nextPage client continuation` to fetch it; the result type can be fixed
-with `IO (Either HuggingFaceError (Page RepoInfo))`. Pagination remains
+with `HuggingFaceM (Page RepoInfo)`. Pagination remains
 explicit so callers control how many requests they make. `listLimit` is the
 requested page size, and the server may cap it.
 
@@ -150,19 +151,17 @@ import System.Environment (getEnv)
 
 main :: IO ()
 main = do
-    rawToken <- T.pack <$> getEnv "HF_TOKEN"
-    rawModel <- T.pack <$> getEnv "HF_MODEL"
-    let inputs = (,,) <$> parseToken rawToken
-                     <*> parseInferenceModel rawModel
-                     <*> mkPositiveInt 64
-    case inputs of
-        Left err -> print err
-        Right (token, model, limit) -> do
-            client <- newClient defaultClientConfig { accessToken = Just token }
-            let request = (defaultChatRequest model (userMessage "Hello!" :| []))
-                    { chatMaxTokens = Just limit }
-            chatCompletion client request >>= print
-
+    result <- runHuggingFaceM $ do
+        rawToken <- liftIO (T.pack <$> getEnv "HF_TOKEN")
+        rawModel <- liftIO (T.pack <$> getEnv "HF_MODEL")
+        token <- liftEither (parseToken rawToken)
+        model <- liftEither (parseInferenceModel rawModel)
+        limit <- liftEither (mkPositiveInt 64)
+        client <- liftIO $ newClient defaultClientConfig { accessToken = Just token }
+        let request = (defaultChatRequest model (userMessage "Hello!" :| []))
+                { chatMaxTokens = Just limit }
+        chatCompletion client request
+    either print print result
 ```
 
 Set `HF_MODEL` to a currently served model, optionally with a provider suffix.
@@ -172,7 +171,7 @@ charges. `chatExtra` accepts provider options such as `tools`, `seed`, and
 `ChatMessage` also accepts JSON content arrays for multimodal requests and
 preserves tool calls in responses.
 
-The compiled example offers these commands:
+The compiled example uses `optparse-applicative` and offers these commands:
 
 ```console
 cabal run huggingface-example -- models bert
@@ -182,14 +181,22 @@ cabal run huggingface-example -- chat "$HF_MODEL" "Explain a Haskell functor bri
 
 Only the last command invokes hosted inference.
 
+Use `cabal run huggingface-example -- --help` for the command overview, or
+`cabal run huggingface-example -- chat --help` for command-specific help.
+Missing or invalid arguments produce usage errors before reading `HF_TOKEN`
+or creating a client. Repository and routed model arguments use the library's
+existing domain parsers. Use `--` before a positional argument beginning with
+a dash, for example `chat "$HF_MODEL" -- "--explain this flag"`.
+
 ## Parse once, use typed values
 
-Text received from configuration or JSON is parsed into opaque types. Request
-functions consume those types and do not recheck their representations. There
-are no partial `IsString` instances, `Read` instances, or exported record fields
-that let callers overwrite a newtype's representation. Renderers such as
-`repoIdText` are ordinary functions. JSON decoding uses the same parsers as
-configuration input.
+Text received from configuration or JSON is parsed into domain types with
+hidden constructors. Request functions consume those types without reparsing.
+Direct accessors such as `accountNameText` are record selectors; computed
+renderers such as `repoIdText` and `revisionText` remain ordinary functions.
+Record updates can replace field values, so use the parsers and smart
+constructors for external input. JSON decoding uses those same parsers.
+There are no partial `IsString` or `Read` instances.
 
 Domain and endpoint grammars use Parsec directly over strict `Text`; pagination
 headers use Parsec over `ByteString`. Parsers require complete input consumption
@@ -239,19 +246,21 @@ while constructing the typed configuration.
 
 `downloadFile client kind repository revision path` buffers a file in memory.
 Use `withDownload` for model weights. It supplies an `http-client` `BodyReader`
-to a callback and releases the connection when the callback returns or throws:
+to a `HuggingFaceM` callback and releases the connection on success, typed error,
+or IO exception:
 
 ```haskell
 import qualified Data.ByteString as BS
+import HuggingFace.Monad (HuggingFaceM, liftIO)
 import Network.HTTP.Client (BodyReader, brRead)
 import System.IO (Handle)
 
-copyBody :: Handle -> BodyReader -> IO ()
+copyBody :: Handle -> BodyReader -> HuggingFaceM ()
 copyBody handle reader = do
-    chunk <- brRead reader
+    chunk <- liftIO (brRead reader)
     if BS.null chunk
         then pure ()
-        else BS.hPut handle chunk >> copyBody handle reader
+        else liftIO (BS.hPut handle chunk) >> copyBody handle reader
 ```
 
 Pass `copyBody handle` as the last argument to `withDownload`. The caller owns
@@ -262,12 +271,41 @@ crossing origins, including ports. HTTPS cannot redirect to HTTP.
 
 ## Errors and configuration
 
-Operations return `Either HuggingFaceError a`. HTTP errors retain status,
+Client operations return `HuggingFaceM a`, an opaque newtype over
+`ExceptT HuggingFaceError IO` with `Functor`, `Applicative`, `Monad`, `MonadIO`,
+and `MonadError HuggingFaceError` instances. Compose operations in a `do` block;
+an error stops subsequent actions. Run the whole computation once with
+`runHuggingFaceM :: HuggingFaceM a -> IO (Either HuggingFaceError a)` at the
+application boundary. The transformer constructor is not exposed.
+
+`HuggingFace.Monad` and the convenience import `HuggingFace` provide `liftEither`
+for pure smart-constructor results, `liftIO` for ordinary IO, and `throwError`
+and `catchError` for explicit error handling. These are the standard
+[`mtl` operations](https://hackage.haskell.org/package/mtl-2.3.1/docs/Control-Monad-Except.html).
+`liftHuggingFaceM` adapts existing `IO (Either HuggingFaceError a)` actions.
+Pure parsers remain pure, and `newClient` still returns `IO Client`.
+
+For example, recover from a missing repository while preserving other errors:
+
+```haskell
+import HuggingFace
+
+findModel :: Client -> RepoId -> HuggingFaceM (Maybe RepoInfo)
+findModel client repository =
+    (Just <$> modelInfo client repository Nothing) `catchError` \err ->
+        case err of
+            HttpError {errorStatus = 404} -> pure Nothing
+            _ -> throwError err
+```
+
+HTTP errors retain status,
 request ID, `Retry-After`, and at most 64 KiB of response content. `Show`
 omits response bodies and headers; treat those fields as sensitive when
 inspecting them yourself. Invalid JSON and schema mismatches return
 `DecodeError`. Transport failures are classified without retaining or printing
-the request. Asynchronous exceptions and non-HTTP callback exceptions propagate.
+the request. Asynchronous exceptions and non-HTTP callback exceptions propagate;
+neither `catchError` nor `runHuggingFaceM` catches them. A typed error leaving a
+download callback closes its response before an outer `catchError` handler runs.
 
 `newClient` creates a reusable TLS connection pool with transport retries
 disabled. POSTs are never followed across redirects or automatically retried.

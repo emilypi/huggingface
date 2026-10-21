@@ -70,7 +70,7 @@ label = do
 parseTextJSON :: Text -> (Text -> Either HuggingFaceError a) -> Value -> JSON.Parser a
 parseTextJSON name parse = withText (T.unpack name) (fromEither . parse)
 
--- | Lift a domain result into Aeson using the error's redacted 'Show' instance.
+-- | Lift a domain result into Aeson's parser.
 fromEither :: Either HuggingFaceError a -> JSON.Parser a
 fromEither = either (fail . show) pure
 

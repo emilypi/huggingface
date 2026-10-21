@@ -1,3 +1,4 @@
+{-# LANGUAGE DerivingVia #-}
 {-# LANGUAGE OverloadedStrings #-}
 
 -- |
@@ -29,11 +30,16 @@ import HuggingFace.Utils (matchedBytes)
 data Page a = Page
     { pageItems :: [a] -- ^ Items in this response.
     , pageNext :: Maybe NextPage -- ^ Opaque continuation supplied by the Hub.
-    } deriving (Eq, Show)
+    } deriving stock (Eq, Show)
 
 -- | Opaque server-provided pagination continuation.
-newtype NextPage = NextPage ByteString
-    deriving (Eq)
+newtype NextPage = NextPage
+    { nextPageURL :: ByteString
+    -- ^ Recover the continuation URL as bytes. Query parameters may contain private
+    -- state; the 'Show' instance redacts them. Consuming a continuation still requires
+    -- checking its origin against the client's configured Hub endpoint.
+    }
+    deriving (Eq) via ByteString
 
 instance Show NextPage where
     show _ = "<NextPage>"
@@ -71,12 +77,6 @@ linkHeader = do
 
 ows :: P.Parser ()
 ows = P.skipMany (P.satisfy (\c -> c == ' ' || c == '\t'))
-
--- | Recover the continuation URL as bytes. Query parameters may contain private
--- state; the 'Show' instance redacts them. Consuming a continuation still requires
--- checking its origin against the client's configured Hub endpoint.
-nextPageURL :: NextPage -> ByteString
-nextPageURL (NextPage url) = url
 
 -- | Parse the first @rel=next@ target from response Link headers and resolve it
 -- against the final request URL. Malformed Link headers contribute no target.

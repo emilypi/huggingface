@@ -26,3 +26,16 @@
 - Domain modules own their implementations directly. Only the transport retains
   an `Internal` module, and all library modules are exposed by Cabal. Read-only
   accessors and composable parsers preserve opaque construction boundaries.
+- `optparse-applicative` CLI parsing with command-specific help, typed arguments,
+  and usage errors handled before authentication or client construction.
+- Opaque `HuggingFaceM` over `ExceptT HuggingFaceError IO`, with `mtl` instances,
+  an IO runner, and lifting/error utilities. Hub, inference, custom transport
+  operations, and download callbacks compose in the concrete monad; pure
+  parsers keep returning `Either`. Scoped responses close on typed failures.
+- Use `DerivingVia` for the concrete monad and representation-preserving domain
+  equality, ordering, and JSON encoding. Keep parsing, redaction, custom wire
+  formats, and constructor-aware diagnostics unchanged.
+- Declare direct newtype accessors as record fields. Repository identities and
+  inference targets use records for their separate components. Existing accessor
+  names remain available, with normal record updates; derived `Show` includes
+  field names. Computed renderers and redacted diagnostics retain their behavior.

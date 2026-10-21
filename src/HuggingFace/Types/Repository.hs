@@ -1,3 +1,4 @@
+{-# LANGUAGE DerivingVia #-}
 {-# LANGUAGE OverloadedStrings #-}
 
 -- |
@@ -31,22 +32,26 @@ import HuggingFace.Error (HuggingFaceError)
 import HuggingFace.Utils (TextParser, parseValue, parseTextJSON, matched, asciiAlphaNum, takeWhile1P)
 
 -- | Repository basename, distinct from its optional owner.
-newtype RepoName = RepoName Text deriving (Eq, Ord, Show)
+newtype RepoName = RepoName
+    { repoNameText :: Text
+    -- ^ Render a repository basename.
+    }
+    deriving stock (Show)
+    deriving (Eq, Ord, ToJSON) via Text
 
 -- | Parse a Hub repository basename.
 parseRepoName :: Text -> Either HuggingFaceError RepoName
 parseRepoName = parseValue "Expected a Hub repository basename" (RepoName <$> nameParser)
 
--- | Render a repository basename.
-repoNameText :: RepoName -> Text
-repoNameText (RepoName t) = t
-
-instance ToJSON RepoName where toJSON = toJSON . repoNameText
 instance FromJSON RepoName where parseJSON = parseTextJSON "RepoName" parseRepoName
 
--- | Parsed repository identity. The constructor is hidden: components can only
--- be assembled from parsed names, and the owner can never contain a slash.
-newtype RepoId = RepoId (Maybe AccountName, RepoName) deriving (Eq, Ord, Show)
+-- | Repository identity with an optional owner and a basename. Parsers and
+-- smart constructors assemble it from parsed names.
+data RepoId = RepoId
+    { repoOwner :: Maybe AccountName -- ^ Optional owner of a repository.
+    , repoName :: RepoName -- ^ Repository basename.
+    }
+    deriving stock (Eq, Ord, Show)
 
 -- | Parse either a bare repository name or @owner/name@.
 parseRepoId :: Text -> Either HuggingFaceError RepoId
@@ -57,30 +62,24 @@ parseRepoId = parseValue "Expected a repository name or owner/name" repoIdParser
 repoIdParser :: TextParser RepoId
 repoIdParser = do
     first <- nameParser
-    P.option (RepoId (Nothing, RepoName first)) $
+    P.option (RepoId Nothing (RepoName first)) $
         qualifiedRepo (AccountName first) . RepoName <$> (P.char '/' *> nameParser)
 
 -- | Assemble a qualified repository from parsed components without reparsing.
 qualifiedRepo :: AccountName -> RepoName -> RepoId
-qualifiedRepo owner name = RepoId (Just owner, name)
+qualifiedRepo owner = RepoId (Just owner)
 
 -- | Render a repository identity for display or persistence.
 repoIdText :: RepoId -> Text
-repoIdText (RepoId (owner, name)) = maybe "" ((<> "/") . accountNameText) owner <> repoNameText name
-
--- | Optional owner of a repository.
-repoOwner :: RepoId -> Maybe AccountName
-repoOwner (RepoId (owner, _)) = owner
-
--- | Repository basename.
-repoName :: RepoId -> RepoName
-repoName (RepoId (_, name)) = name
+repoIdText (RepoId owner name) = maybe "" ((<> "/") . accountNameText) owner <> repoNameText name
 
 instance ToJSON RepoId where toJSON = toJSON . repoIdText
 instance FromJSON RepoId where parseJSON = parseTextJSON "RepoId" parseRepoId
 
 -- | Branch, tag, or commit reference; slash-separated components are retained.
-newtype Revision = Revision (NonEmpty Text) deriving (Eq, Ord, Show)
+newtype Revision = Revision (NonEmpty Text)
+    deriving stock (Show)
+    deriving (Eq, Ord) via (NonEmpty Text)
 
 -- | Parse a revision. Slashes are encoded together as one URL segment.
 parseRevision :: Text -> Either HuggingFaceError Revision
@@ -102,7 +101,9 @@ instance ToJSON Revision where toJSON = toJSON . revisionText
 instance FromJSON Revision where parseJSON = parseTextJSON "Revision" parseRevision
 
 -- | Nonempty relative file path with no empty, dot, or parent segments.
-newtype RepoPath = RepoPath (NonEmpty Text) deriving (Eq, Ord, Show)
+newtype RepoPath = RepoPath (NonEmpty Text)
+    deriving stock (Show)
+    deriving (Eq, Ord) via (NonEmpty Text)
 
 -- | Parse a repository-relative path, preserving Unicode and spaces.
 parseRepoPath :: Text -> Either HuggingFaceError RepoPath
@@ -116,7 +117,11 @@ instance ToJSON RepoPath where toJSON = toJSON . repoPathText
 instance FromJSON RepoPath where parseJSON = parseTextJSON "RepoPath" parseRepoPath
 
 -- | Full SHA-1 commit identifier, stored in canonical lowercase form.
-newtype CommitSha = CommitSha Text deriving (Eq, Ord, Show)
+newtype CommitSha = CommitSha
+    { commitShaText :: Text -- ^ Render a full commit identifier.
+    }
+    deriving stock (Show)
+    deriving (Eq, Ord, ToJSON) via Text
 
 -- | Parse exactly forty ASCII hexadecimal digits. Use 'parseRevision' for
 -- abbreviated commit references, branches, or tags.
@@ -124,30 +129,24 @@ parseCommitSha :: Text -> Either HuggingFaceError CommitSha
 parseCommitSha = parseValue "CommitSha requires forty hexadecimal digits" $
     CommitSha . T.toLower <$> matched (replicateM_ 40 (P.satisfy (\c -> isAscii c && isHexDigit c)))
 
--- | Render a full commit identifier.
-commitShaText :: CommitSha -> Text
-commitShaText (CommitSha t) = t
-
-instance ToJSON CommitSha where toJSON = toJSON . commitShaText
 instance FromJSON CommitSha where parseJSON = parseTextJSON "CommitSha" parseCommitSha
 
 -- | Account or organization namespace.
-newtype AccountName = AccountName Text deriving (Eq, Ord, Show)
+newtype AccountName = AccountName
+    { accountNameText :: Text -- ^ Render an account or organization name.
+    }
+    deriving stock (Show)
+    deriving (Eq, Ord, ToJSON) via Text
 
 -- | Parse a AccountName from external text.
 parseAccountName :: Text -> Either HuggingFaceError AccountName
 parseAccountName = parseValue "Expected a Hub account or organization name" (AccountName <$> nameParser)
 
--- | Render a AccountName.
-accountNameText :: AccountName -> Text
-accountNameText (AccountName t) = t
-
-instance ToJSON AccountName where toJSON = toJSON . accountNameText
 instance FromJSON AccountName where parseJSON = parseTextJSON "AccountName" parseAccountName
 
 -- | Hub repository kinds.
 data RepoType = Model | Dataset | Space
-    deriving (Eq, Ord, Show, Enum, Bounded)
+    deriving stock (Eq, Ord, Show, Enum, Bounded)
 
 -- | Hub collection path component for a repository kind.
 repoPlural :: RepoType -> Text

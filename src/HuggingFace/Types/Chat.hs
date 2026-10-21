@@ -1,3 +1,4 @@
+{-# LANGUAGE DerivingVia #-}
 {-# LANGUAGE OverloadedStrings #-}
 
 -- |
@@ -32,75 +33,75 @@ import HuggingFace.Types.Parameters (PositiveInt, ChatTemperature, TopP)
 import HuggingFace.Types.Routing (InferenceModel, ModelName)
 
 -- | Open chat role; common roles have named constants.
-newtype ChatRole = ChatRole Text deriving (Eq, Ord, Show)
+newtype ChatRole = ChatRole
+    { chatRoleText :: Text
+    -- ^ Render a ChatRole.
+    }
+    deriving stock (Show)
+    deriving (Eq, Ord, ToJSON) via Text
 
 -- | Parse a ChatRole from external text.
 parseChatRole :: Text -> Either HuggingFaceError ChatRole
 parseChatRole = fmap ChatRole . parseLabel "ChatRole"
 
--- | Render a ChatRole.
-chatRoleText :: ChatRole -> Text
-chatRoleText (ChatRole t) = t
-
-instance ToJSON ChatRole where toJSON = toJSON . chatRoleText
 instance FromJSON ChatRole where parseJSON = parseTextJSON "ChatRole" parseChatRole
 
 -- | Opaque provider-assigned tool call identifier.
-newtype ToolCallId = ToolCallId Text deriving (Eq, Ord, Show)
+newtype ToolCallId = ToolCallId
+    { toolCallIdText :: Text
+    -- ^ Render a ToolCallId.
+    }
+    deriving stock (Show)
+    deriving (Eq, Ord, ToJSON) via Text
 
 -- | Parse a ToolCallId from external text.
 parseToolCallId :: Text -> Either HuggingFaceError ToolCallId
 parseToolCallId = fmap ToolCallId . parseLabel "ToolCallId"
 
--- | Render a ToolCallId.
-toolCallIdText :: ToolCallId -> Text
-toolCallIdText (ToolCallId t) = t
-
-instance ToJSON ToolCallId where toJSON = toJSON . toolCallIdText
 instance FromJSON ToolCallId where parseJSON = parseTextJSON "ToolCallId" parseToolCallId
 
 -- | Open chat participant name; provider-specific naming rules remain server-side.
-newtype ParticipantName = ParticipantName Text deriving (Eq, Ord, Show)
+newtype ParticipantName = ParticipantName
+    { participantNameText :: Text
+    -- ^ Render a ParticipantName.
+    }
+    deriving stock (Show)
+    deriving (Eq, Ord, ToJSON) via Text
 
 -- | Parse a ParticipantName from external text.
 parseParticipantName :: Text -> Either HuggingFaceError ParticipantName
 parseParticipantName = fmap ParticipantName . parseLabel "ParticipantName"
 
--- | Render a ParticipantName.
-participantNameText :: ParticipantName -> Text
-participantNameText (ParticipantName t) = t
-
-instance ToJSON ParticipantName where toJSON = toJSON . participantNameText
 instance FromJSON ParticipantName where parseJSON = parseTextJSON "ParticipantName" parseParticipantName
 
 -- | Opaque provider-assigned completion identifier. An empty identifier is
 -- preserved because Hugging Face / TGI can return it on successful responses.
-newtype CompletionId = CompletionId Text deriving (Eq, Ord, Show)
+newtype CompletionId = CompletionId
+    { completionIdText :: Text
+    -- ^ Render a CompletionId.
+    }
+    deriving stock (Show)
+    deriving (Eq, Ord, ToJSON) via Text
 
 -- | Parse a CompletionId from external text.
 parseCompletionId :: Text -> Either HuggingFaceError CompletionId
 parseCompletionId = parseValue "Expected a completion identifier without controls" $
     CompletionId <$> (label P.<|> ("" <$ P.eof))
 
--- | Render a CompletionId.
-completionIdText :: CompletionId -> Text
-completionIdText (CompletionId t) = t
-
-instance ToJSON CompletionId where toJSON = toJSON . completionIdText
 instance FromJSON CompletionId where parseJSON = parseTextJSON "CompletionId" parseCompletionId
 
 -- | Open provider stop reason; unknown reasons are preserved.
-newtype FinishReason = FinishReason Text deriving (Eq, Ord, Show)
+newtype FinishReason = FinishReason
+    { finishReasonText :: Text
+    -- ^ Render a FinishReason.
+    }
+    deriving stock (Show)
+    deriving (Eq, Ord, ToJSON) via Text
 
 -- | Parse a FinishReason from external text.
 parseFinishReason :: Text -> Either HuggingFaceError FinishReason
 parseFinishReason = fmap FinishReason . parseLabel "FinishReason"
 
--- | Render a FinishReason.
-finishReasonText :: FinishReason -> Text
-finishReasonText (FinishReason t) = t
-
-instance ToJSON FinishReason where toJSON = toJSON . finishReasonText
 instance FromJSON FinishReason where parseJSON = parseTextJSON "FinishReason" parseFinishReason
 
 -- | System instruction role.
@@ -131,7 +132,7 @@ data ChatMessage = ChatMessage
     , messageToolCalls :: Maybe Value -- ^ Tool call array, when present.
     , messageToolCallId :: Maybe ToolCallId -- ^ Identifier for a tool response.
     , messageName :: Maybe ParticipantName -- ^ Optional participant name.
-    } deriving (Eq, Show)
+    } deriving stock (Eq, Show)
 
 instance ToJSON ChatMessage where
     toJSON message = object $ ("role" .= messageRole message)
@@ -171,7 +172,7 @@ data ChatRequest = ChatRequest
     , chatTemperature :: Maybe ChatTemperature -- ^ Finite sampling temperature in @[0,2]@.
     , chatTopP :: Maybe TopP -- ^ Finite probability in @(0,1]@.
     , chatExtra :: Object -- ^ Additional fields, e.g. @tools@ or @response_format@.
-    } deriving (Eq, Show)
+    } deriving stock (Eq, Show)
 
 -- | Construct a request with server-default sampling settings.
 defaultChatRequest :: InferenceModel -> NonEmpty ChatMessage -> ChatRequest
@@ -194,7 +195,7 @@ data Usage = Usage
     { promptTokens :: Integer -- ^ Tokens in the prompt.
     , completionTokens :: Integer -- ^ Tokens generated.
     , totalTokens :: Integer -- ^ Total billed/reported tokens.
-    } deriving (Eq, Show)
+    } deriving stock (Eq, Show)
 
 instance FromJSON Usage where
     parseJSON = withObject "Usage" $ \o -> Usage
@@ -205,7 +206,7 @@ data ChatChoice = ChatChoice
     { choiceIndex :: Int -- ^ Candidate index.
     , choiceMessage :: ChatMessage -- ^ Assistant message, including tool calls.
     , choiceFinishReason :: Maybe FinishReason -- ^ Provider stop reason.
-    } deriving (Eq, Show)
+    } deriving stock (Eq, Show)
 
 instance FromJSON ChatChoice where
     parseJSON = withObject "ChatChoice" $ \o -> ChatChoice
@@ -218,7 +219,7 @@ data ChatCompletion = ChatCompletion
     , completionChoices :: [ChatChoice] -- ^ Completion candidates.
     , completionUsage :: Maybe Usage -- ^ Optional token accounting.
     , completionRaw :: Object -- ^ Full response, including provider extensions.
-    } deriving (Eq, Show)
+    } deriving stock (Eq, Show)
 
 instance FromJSON ChatCompletion where
     parseJSON = withObject "ChatCompletion" $ \o -> ChatCompletion

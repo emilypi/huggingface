@@ -1,9 +1,0 @@
-flows:
-  - id: hub-read
-    steps: [validated identifiers, encoded path and query, authenticated GET, status check, typed JSON]
-  - id: pagination
-    steps: [Link header, final-response URL resolution, opaque continuation, Hub origin validation, authenticated GET]
-  - id: inference
-    steps: [typed request validation, JSON encoding, POST with retries disabled, status check, typed result]
-  - id: download
-    steps: [validated repository path, GET, bounded redirect handling, strip credentials across origins, scoped body callback, close response]

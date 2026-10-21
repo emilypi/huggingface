@@ -30,28 +30,14 @@ import HuggingFace.Types.Auth (Token)
 import HuggingFace.Types.Parameters (PositiveInt, positiveIntValue, defaultTimeout)
 
 -- | Reusable connection pool, parsed endpoints, and credentials. Construct a
--- client with 'newClient' or 'newClientWithManager'; accessors are read-only.
-data Client = Client Manager Request Request (Maybe Token) Int
-
--- | Connection manager used by this client.
-clientManager :: Client -> Manager
-clientManager (Client manager _ _ _ _) = manager
-
--- | Parsed Hub origin, without request credentials or endpoint-specific paths.
-clientHub :: Client -> Request
-clientHub (Client _ hub _ _ _) = hub
-
--- | Parsed inference origin, without request credentials or task-specific paths.
-clientInference :: Client -> Request
-clientInference (Client _ _ inference _ _) = inference
-
--- | Optional credential for this client's configured origins.
-clientToken :: Client -> Maybe Token
-clientToken (Client _ _ _ token _) = token
-
--- | Positive response timeout in microseconds.
-clientTimeout :: Client -> Int
-clientTimeout (Client _ _ _ _ timeout) = timeout
+-- client with 'newClient' or 'newClientWithManager'.
+data Client = Client
+    { clientManager :: Manager -- ^ Connection manager used by this client.
+    , clientHub :: Request -- ^ Parsed Hub origin, without request credentials or endpoint-specific paths.
+    , clientInference :: Request -- ^ Parsed inference origin, without request credentials or task-specific paths.
+    , clientToken :: Maybe Token -- ^ Optional credential for this client's configured origins.
+    , clientTimeout :: Int -- ^ Response timeout in microseconds.
+    }
 
 -- | Parsed HTTP(S) origin. The request representation is retained so client
 -- construction never reparses URLs. Plain HTTP is restricted to loopback.

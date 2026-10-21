@@ -19,7 +19,11 @@ import HuggingFace.Error (HuggingFaceError)
 import HuggingFace.Utils (parseValue, takeWhile1P, asciiAlphaNum)
 
 -- | Opaque bearer token with a redacted 'Show' instance.
-newtype Token = Token ByteString
+newtype Token = Token
+    { tokenBytes :: ByteString
+    -- ^ Recover the bearer credential for a custom transport. This value is secret;
+    -- unlike the token's 'Show' instance, rendering these bytes exposes it.
+    }
 
 instance Show Token where
     show _ = "<Token>"
@@ -29,8 +33,3 @@ instance Show Token where
 parseToken :: Text -> Either HuggingFaceError Token
 parseToken = parseValue "Token requires ASCII letters, digits, underscores, or hyphens" $
     Token . encodeUtf8 <$> takeWhile1P (\c -> asciiAlphaNum c || c == '_' || c == '-')
-
--- | Recover the bearer credential for a custom transport. This value is secret;
--- unlike the token's 'Show' instance, rendering these bytes exposes it.
-tokenBytes :: Token -> ByteString
-tokenBytes (Token bytes) = bytes

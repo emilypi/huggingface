@@ -43,6 +43,7 @@ library
     HuggingFace.Error
     HuggingFace.Hub
     HuggingFace.Inference
+    HuggingFace.Monad
     HuggingFace.Types
     HuggingFace.Types.Auth
     HuggingFace.Types.Chat
@@ -60,6 +61,7 @@ library
     , http-client     >=0.7.13 && <0.8
     , http-client-tls >=0.3.6 && <0.5
     , http-types      >=0.12  && <0.13
+    , mtl             >=2.3.1 && <2.4
     , network-uri     >=2.6   && <2.7
     , parsec          >=3.1.16 && <3.2
     , text            >=2.0   && <2.3
@@ -88,4 +90,7 @@ executable huggingface-example
   hs-source-dirs: examples
   main-is: Main.hs
   ghc-options: -threaded
-  build-depends: huggingface, text
+  build-depends:
+      huggingface
+    , optparse-applicative >=0.18 && <0.20
+    , text
